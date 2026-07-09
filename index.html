@@ -1,0 +1,738 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Email Tracker</title>
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    :root{
+      --bg:#0f0f11;--surface:#1a1a1f;--surface2:#22222a;--border:#2e2e38;
+      --accent:#7c6af7;--accent2:#f06292;--text:#e8e8f0;--muted:#6b6b80;
+      --green:#4ade80;--yellow:#fbbf24;--red:#f87171;
+    }
+    body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:14px;line-height:1.5;min-height:100vh}
+    .page{max-width:940px;margin:0 auto;padding:28px 16px}
+    .hidden{display:none!important}
+
+    /* Buttons */
+    .btn{display:inline-flex;align-items:center;gap:6px;background:var(--accent);color:#fff;border:none;border-radius:8px;padding:9px 18px;font-size:13px;font-weight:500;cursor:pointer;transition:opacity .15s;white-space:nowrap}
+    .btn:hover{opacity:.85}.btn:disabled{opacity:.4;cursor:not-allowed}
+    .btn.out{background:transparent;border:1px solid var(--border);color:var(--text)}
+    .btn.out:hover{background:var(--surface2)}
+    .btn.ghost{background:transparent;color:var(--muted);border:none;padding:7px 10px}
+    .btn.ghost:hover{color:var(--text);background:var(--surface2)}
+    .btn.danger{background:var(--red)}
+    .btn.sm{padding:5px 12px;font-size:12px}
+    .btn.icon{padding:7px;border-radius:8px}
+
+    /* Setup */
+    #v-setup{display:flex;align-items:center;justify-content:center;min-height:100vh;padding:24px}
+    .setup-box{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:36px;max-width:520px;width:100%}
+    .setup-box h1{font-size:18px;font-weight:600;margin-bottom:6px}
+    .setup-box .sub{color:var(--muted);font-size:13px;margin-bottom:22px}
+    .steps{margin:18px 0 22px}
+    .step{display:flex;gap:12px;align-items:flex-start;margin-bottom:10px;font-size:13px;color:var(--muted)}
+    .snum{min-width:22px;height:22px;background:var(--surface2);border:1px solid var(--border);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;color:var(--text);flex-shrink:0;margin-top:1px}
+    .step a{color:var(--accent);text-decoration:none}.step a:hover{text-decoration:underline}
+    .step strong{color:var(--text)}
+
+    /* Form */
+    .fg{margin-bottom:14px}
+    .fg label{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin-bottom:5px}
+    .fg input,.fg select{width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:9px 12px;font-size:14px}
+    .fg input:focus,.fg select:focus{outline:2px solid var(--accent);outline-offset:-1px}
+    .two-col{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+    .fsep{font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin:16px 0 10px;border-top:1px solid var(--border);padding-top:14px}
+
+    /* Auth */
+    #v-auth{display:flex;align-items:center;justify-content:center;min-height:100vh}
+    .auth-box{text-align:center;max-width:340px;padding:16px}
+    .auth-box h2{font-size:18px;margin-bottom:8px}
+    .auth-box p{color:var(--muted);font-size:13px;margin-bottom:24px}
+    .goog-btn{display:inline-flex;align-items:center;gap:10px;background:#fff;color:#1f1f1f;border:none;border-radius:8px;padding:10px 22px;font-size:14px;font-weight:500;cursor:pointer;transition:background .15s}
+    .goog-btn:hover{background:#f0f0f0}
+    .goog-btn svg{width:18px;height:18px;flex-shrink:0}
+
+    /* Dashboard header */
+    .dash-hd{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:26px;flex-wrap:wrap;gap:12px}
+    .dash-hd h1{font-size:17px;font-weight:600;letter-spacing:-.2px}
+    .dash-hd .meta{color:var(--muted);font-size:12px;margin-top:3px}
+    .hd-actions{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+
+    /* Sync badge */
+    .sbadge{display:inline-flex;align-items:center;gap:6px;background:var(--surface2);border:1px solid var(--border);border-radius:20px;padding:4px 12px;font-size:12px;color:var(--muted)}
+    .sdot{width:6px;height:6px;border-radius:50%;background:var(--muted)}
+    .sdot.live{background:var(--green);animation:pulse 2s infinite}
+    .sdot.stale{background:var(--yellow)}
+    .sdot.syncing{background:var(--accent);animation:pulse .8s infinite}
+    @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+
+    /* Stats */
+    .sgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;margin-bottom:22px}
+    .scard{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:18px 20px}
+    .slabel{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.7px;margin-bottom:6px}
+    .sval{font-size:30px;font-weight:700;letter-spacing:-1.5px}
+    .ssub{color:var(--muted);font-size:12px;margin-top:4px}
+    .u1{color:var(--accent)}.u2{color:var(--accent2)}
+
+    /* Progress */
+    .prog-wrap{margin-bottom:16px;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 16px}
+    .prog-hd{display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-bottom:8px}
+    .prog-bar{height:4px;background:var(--surface2);border-radius:99px;overflow:hidden}
+    .prog-fill{height:100%;background:var(--accent);border-radius:99px;transition:width .3s}
+
+    /* Week card */
+    .wcard{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:20px}
+    .wcard-hd{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px}
+    .wcard-hd h2{font-size:15px;font-weight:600}
+    .ugrid{display:grid;grid-template-columns:108px 72px 72px 80px 1fr;gap:10px;align-items:center}
+    .ugrid.hdr{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px}
+    .ugrid .lbl{font-weight:600;font-size:13px}
+    .ugrid .num{font-size:16px;font-weight:600;text-align:center}
+    .barcell{display:flex;align-items:center;gap:8px}
+    .bar{flex:1;height:6px;background:var(--surface2);border-radius:99px;overflow:hidden}
+    .barfill{height:100%;border-radius:99px;transition:width .4s}
+    .barpct{font-size:13px;font-weight:600;min-width:36px;text-align:right}
+    .wdiv{border:none;border-top:1px solid var(--border);margin:10px 0}
+    .tag{display:inline-block;font-size:10px;background:rgba(240,98,146,.1);border:1px solid rgba(240,98,146,.3);color:var(--accent2);padding:1px 6px;border-radius:20px;margin-left:4px;vertical-align:middle}
+    .wnote{margin-top:12px;font-size:12px;color:var(--muted)}
+
+    /* History */
+    .sec-lbl{font-size:11px;text-transform:uppercase;letter-spacing:.7px;color:var(--muted)}
+    .week-nav{display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap}
+    .week-nav select{background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:7px 12px;font-size:13px;cursor:pointer;flex:1;max-width:260px}
+    .tcard{background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden}
+    table{width:100%;border-collapse:collapse;font-size:13px}
+    th{text-align:left;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.5px;padding:10px 14px;border-bottom:1px solid var(--border);font-weight:500}
+    td{padding:10px 14px;border-bottom:1px solid var(--border);vertical-align:middle}
+    tr:last-child td{border-bottom:none}
+    tr.clickable{cursor:pointer}
+    tr.clickable:hover td{background:var(--surface2)}
+    tr.row-active td{background:rgba(124,106,247,.07)}
+
+    /* Modal */
+    .overlay{position:fixed;inset:0;background:rgba(0,0,0,.65);display:flex;align-items:center;justify-content:center;z-index:100;padding:16px}
+    .modal{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:28px;width:100%;max-width:420px}
+    .modal h3{font-size:16px;font-weight:600;margin-bottom:18px}
+    .modal-ft{display:flex;gap:8px;justify-content:flex-end;margin-top:22px}
+
+    /* Toast */
+    .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px 18px;font-size:13px;z-index:200;opacity:0;transition:opacity .2s;pointer-events:none;white-space:nowrap}
+    .toast.show{opacity:1}
+
+    @media(max-width:560px){
+      .ugrid{grid-template-columns:80px 56px 56px 64px 1fr;gap:6px}
+      .sgrid{grid-template-columns:1fr 1fr}
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── Setup ── -->
+<div id="v-setup" class="hidden">
+  <div class="setup-box">
+    <h1>Email Tracker — Setup</h1>
+    <p class="sub">Connects to your Gmail via the official Gmail API. One-time setup.</p>
+    <div class="steps">
+      <div class="step"><div class="snum">1</div><div>Go to <a href="https://console.cloud.google.com/" target="_blank">console.cloud.google.com</a>, create a project, enable the <strong>Gmail API</strong></div></div>
+      <div class="step"><div class="snum">2</div><div>Under <strong>APIs &amp; Services &gt; Credentials</strong>, create an <strong>OAuth 2.0 Client ID</strong> (type: Web application)</div></div>
+      <div class="step"><div class="snum">3</div><div>Add your page's URL as an <strong>Authorized JavaScript origin</strong> (e.g. <code id="origin-hint"></code>)</div></div>
+      <div class="step"><div class="snum">4</div><div>Paste the Client ID below and fill out the rest</div></div>
+    </div>
+    <div class="fg"><label>Google OAuth Client ID</label><input type="text" id="s-cid" placeholder="xxxxxxx.apps.googleusercontent.com" /></div>
+    <div class="two-col">
+      <div class="fg"><label>Your name</label><input type="text" id="s-u1" value="Yasser" /></div>
+      <div class="fg"><label>Friend's name</label><input type="text" id="s-u2" value="Friend" /></div>
+    </div>
+    <div class="fg"><label>Friend's email (to infer their stats from your inbox)</label><input type="email" id="s-fe" placeholder="friend@example.com" /></div>
+    <button class="btn" style="width:100%;justify-content:center;margin-top:6px" onclick="saveSetup()">Save and continue</button>
+  </div>
+</div>
+
+<!-- ── Auth ── -->
+<div id="v-auth" class="hidden">
+  <div class="auth-box">
+    <div style="width:48px;height:48px;background:var(--accent);border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:22px;margin:0 auto 16px">✉</div>
+    <h2>Email Tracker</h2>
+    <p>Sign in with Gmail to pull your email stats</p>
+    <button class="goog-btn" onclick="requestToken()">
+      <svg viewBox="0 0 24 24"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
+      Sign in with Google
+    </button>
+    <div style="margin-top:14px"><button class="btn ghost sm" onclick="show('v-setup')">Change settings</button></div>
+  </div>
+</div>
+
+<!-- ── Dashboard ── -->
+<div id="v-dash" class="hidden">
+  <div class="page">
+
+    <div class="dash-hd">
+      <div>
+        <h1 id="dash-title">Email Tracker</h1>
+        <div class="meta" id="dash-meta"></div>
+      </div>
+      <div class="hd-actions">
+        <div class="sbadge"><div class="sdot" id="sdot"></div><span id="slbl">—</span></div>
+        <button class="btn" id="btn-refresh" onclick="triggerSync()">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+          Refresh
+        </button>
+        <button class="btn out sm" onclick="show('v-setup')">Settings</button>
+        <button class="btn ghost icon" onclick="signOut()" title="Sign out">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <div class="sgrid" id="sgrid"></div>
+
+    <div id="prog-wrap" class="prog-wrap hidden">
+      <div class="prog-hd"><span id="prog-msg">Syncing...</span><span id="prog-pct"></span></div>
+      <div class="prog-bar"><div class="prog-fill" id="prog-fill" style="width:0%"></div></div>
+    </div>
+
+    <div class="wcard">
+      <div class="wcard-hd">
+        <h2 id="week-title">—</h2>
+        <div style="display:flex;gap:6px">
+          <button class="btn out sm" id="btn-sync-week" onclick="syncSelected()">Sync this week</button>
+          <button class="btn danger sm" id="btn-del-week" onclick="deleteWeek()">Delete</button>
+        </div>
+      </div>
+      <div class="ugrid hdr">
+        <div></div><div style="text-align:center">Sent</div><div style="text-align:center">CC</div><div style="text-align:center">Threads</div><div>Reply %</div>
+      </div>
+      <div id="week-rows"></div>
+      <div class="wnote" id="wnote"></div>
+    </div>
+
+    <div class="week-nav">
+      <div class="sec-lbl" style="white-space:nowrap">History</div>
+      <select id="wsel" onchange="selectWeek(this.value)"></select>
+      <button class="btn out sm" onclick="openAddWeek()">+ Add week</button>
+    </div>
+    <div class="tcard">
+      <table>
+        <thead><tr>
+          <th>Week</th>
+          <th id="th-u1s">Sent</th>
+          <th>Reply %</th>
+          <th id="th-u2s">Friend (inferred)</th>
+          <th>CC</th>
+          <th>Synced</th>
+        </tr></thead>
+        <tbody id="hist"></tbody>
+      </table>
+    </div>
+
+  </div>
+</div>
+
+<!-- ── Add week modal ── -->
+<div class="overlay hidden" id="m-add">
+  <div class="modal">
+    <h3>Add Week (manual)</h3>
+    <div class="fg"><label>Week starting (Monday)</label><input type="date" id="mw-date" /></div>
+    <p style="font-size:12px;color:var(--muted);margin-bottom:12px">Enter manually, then hit "Sync this week" to override with live Gmail data.</p>
+    <div class="fsep" id="mw-u1-lbl">Yasser</div>
+    <div class="two-col">
+      <div class="fg"><label>Sent</label><input type="number" id="mw-u1s" value="0" min="0" /></div>
+      <div class="fg"><label>Replies received</label><input type="number" id="mw-u1r" value="0" min="0" /></div>
+    </div>
+    <div class="fg"><label>CC overlap</label><input type="number" id="mw-cc" value="0" min="0" /></div>
+    <div class="fsep" id="mw-u2-lbl">Friend</div>
+    <div class="fg"><label>Friend sent (inferred)</label><input type="number" id="mw-u2s" value="0" min="0" /></div>
+    <div class="modal-ft">
+      <button class="btn out" onclick="closeModal('m-add')">Cancel</button>
+      <button class="btn" onclick="saveManualWeek()">Add</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+'use strict';
+
+// ── Constants ──────────────────────────────────────────────────────────────
+const SCOPE   = 'https://www.googleapis.com/auth/gmail.readonly';
+const GAPI    = 'https://gmail.googleapis.com/gmail/v1/users/me';
+const STALE   = 24 * 60 * 60 * 1000;
+
+// ── State ──────────────────────────────────────────────────────────────────
+let CFG  = { clientId:'', u1Name:'Yasser', u2Name:'Friend', friendEmail:'' };
+let DATA = { weeks:{}, myEmail:'' };
+let token = null, tokenExp = 0;
+let tokenClient = null;
+let pendingResolve = null, pendingReject = null;
+let selectedWeek = null;
+let isSyncing = false;
+
+function loadState() {
+  try { Object.assign(CFG,  JSON.parse(localStorage.getItem('et3-cfg')  || '{}')); } catch {}
+  try { Object.assign(DATA, JSON.parse(localStorage.getItem('et3-data') || '{}')); } catch {}
+}
+function saveCFG()  { localStorage.setItem('et3-cfg',  JSON.stringify(CFG));  }
+function saveDATA() { localStorage.setItem('et3-data', JSON.stringify(DATA)); }
+const isCfg = () => !!(CFG.clientId && CFG.friendEmail);
+
+// ── Routing ────────────────────────────────────────────────────────────────
+function show(id) {
+  ['v-setup','v-auth','v-dash'].forEach(v => document.getElementById(v).classList.add('hidden'));
+  document.getElementById(id).classList.remove('hidden');
+  if (id === 'v-setup') populateSetup();
+}
+
+// ── GIS Auth ───────────────────────────────────────────────────────────────
+function waitGIS(cb) {
+  if (typeof google !== 'undefined' && google.accounts) return cb();
+  const t = setInterval(() => { if (typeof google !== 'undefined' && google.accounts) { clearInterval(t); cb(); }}, 150);
+}
+
+function initTokenClient() {
+  if (tokenClient || !CFG.clientId) return;
+  waitGIS(() => {
+    tokenClient = google.accounts.oauth2.initTokenClient({
+      client_id: CFG.clientId,
+      scope: SCOPE,
+      callback: handleToken,
+      error_callback: (e) => {
+        if (pendingReject) { pendingReject(new Error(e.type)); pendingReject = pendingResolve = null; }
+      }
+    });
+  });
+}
+
+function handleToken(resp) {
+  if (resp.error) {
+    if (pendingReject) { pendingReject(new Error(resp.error)); pendingReject = pendingResolve = null; }
+    return;
+  }
+  token    = resp.access_token;
+  tokenExp = Date.now() + (resp.expires_in - 60) * 1000;
+  if (pendingResolve) { pendingResolve(); pendingResolve = pendingReject = null; }
+  else { showDash(); }
+}
+
+function requestToken() {
+  initTokenClient();
+  waitGIS(() => tokenClient.requestAccessToken({ prompt: 'select_account' }));
+}
+
+function trysilent() {
+  initTokenClient();
+  waitGIS(() => tokenClient.requestAccessToken({ prompt: '' }));
+}
+
+async function ensureToken() {
+  if (token && Date.now() < tokenExp) return;
+  return new Promise((res, rej) => {
+    pendingResolve = res; pendingReject = rej;
+    tokenClient.requestAccessToken({ prompt: '' });
+    setTimeout(() => {
+      if (pendingReject) { pendingReject(new Error('Auth timeout')); pendingResolve = pendingReject = null; }
+    }, 60000);
+  });
+}
+
+function signOut() {
+  if (token) google.accounts.oauth2.revoke(token);
+  token = null; tokenExp = 0; tokenClient = null;
+  show('v-auth');
+}
+
+function showDash() {
+  show('v-dash');
+  render();
+  maybeAutoSync();
+}
+
+// ── Gmail API ──────────────────────────────────────────────────────────────
+async function gFetch(path, params = {}) {
+  await ensureToken();
+  const url = new URL(GAPI + path);
+  for (const [k,v] of Object.entries(params)) url.searchParams.set(k, String(v));
+  const r = await fetch(url.toString(), { headers: { Authorization: `Bearer ${token}` } });
+  if (!r.ok) throw new Error(`Gmail ${r.status} on ${path}`);
+  return r.json();
+}
+
+async function listAll(q) {
+  const all = []; let pt;
+  do {
+    const p = { q, maxResults: 500 };
+    if (pt) p.pageToken = pt;
+    const d = await gFetch('/messages', p);
+    if (d.messages) all.push(...d.messages);
+    pt = d.nextPageToken;
+  } while (pt);
+  return all;
+}
+
+async function getMyEmail() {
+  if (DATA.myEmail) return DATA.myEmail;
+  const p = await gFetch('/profile');
+  DATA.myEmail = p.emailAddress;
+  saveDATA();
+  return DATA.myEmail;
+}
+
+async function replyRate(threadIds, myEmail, onProg) {
+  const BATCH = 6;
+  let replied = 0;
+  for (let i = 0; i < threadIds.length; i += BATCH) {
+    const batch = await Promise.all(
+      threadIds.slice(i, i+BATCH).map(id =>
+        gFetch(`/threads/${id}`, { format:'metadata', metadataHeaders:'From' }).catch(() => null)
+      )
+    );
+    for (const t of batch.filter(Boolean)) {
+      const hasOther = (t.messages||[]).some(m => {
+        const from = (m.payload?.headers?.find(h => h.name==='From')?.value || '').toLowerCase();
+        return !from.includes(myEmail.toLowerCase());
+      });
+      if (hasOther) replied++;
+    }
+    onProg && onProg(Math.min(i+BATCH, threadIds.length), threadIds.length);
+  }
+  return replied;
+}
+
+// ── Sync ───────────────────────────────────────────────────────────────────
+function monday(dateStr) {
+  const d = new Date(dateStr + 'T12:00:00');
+  const diff = d.getDay() === 0 ? -6 : 1 - d.getDay();
+  d.setDate(d.getDate() + diff);
+  return dateFmt(d);
+}
+
+function dateFmt(d) {
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+
+function todayStr() { return dateFmt(new Date()); }
+
+function toUnix(ds) { return Math.floor(new Date(ds+'T00:00:00').getTime()/1000); }
+
+function weekEnd(ws) {
+  const d = new Date(ws+'T12:00:00'); d.setDate(d.getDate()+7); return dateFmt(d);
+}
+
+function setProgress(msg, pct) {
+  document.getElementById('prog-wrap').classList.remove('hidden');
+  document.getElementById('prog-msg').textContent = msg;
+  document.getElementById('prog-fill').style.width = (pct||0) + '%';
+  document.getElementById('prog-pct').textContent = pct != null ? pct+'%' : '';
+}
+
+function clearProgress() { document.getElementById('prog-wrap').classList.add('hidden'); }
+
+function setSyncing(on) {
+  isSyncing = on;
+  document.getElementById('btn-refresh').disabled = on;
+  document.getElementById('btn-sync-week').disabled = on;
+  if (on) setBadge('syncing','Syncing...');
+}
+
+async function syncWeek(ws) {
+  if (isSyncing) return;
+  setSyncing(true);
+  try {
+    const after  = toUnix(ws);
+    const before = toUnix(weekEnd(ws));
+    const myEmail = await getMyEmail();
+
+    setProgress('Fetching sent emails...', 5);
+    const sentMsgs = await listAll(`in:sent after:${after} before:${before}`);
+
+    setProgress(`Checking CC with ${CFG.u2Name}...`, 22);
+    const ccMsgs = await listAll(
+      `in:sent (to:${CFG.friendEmail} OR cc:${CFG.friendEmail}) after:${after} before:${before}`
+    );
+
+    setProgress(`Counting ${CFG.u2Name}'s emails to you...`, 35);
+    const friendMsgs = await listAll(`from:${CFG.friendEmail} after:${after} before:${before}`);
+
+    const threadIds = [...new Set(sentMsgs.map(m => m.threadId))];
+    setProgress(`Analyzing ${threadIds.length} threads...`, 42);
+
+    const replied = await replyRate(threadIds, myEmail, (done, tot) => {
+      setProgress(`Threads ${done}/${tot}...`, 42 + Math.round(done/tot * 52));
+    });
+
+    DATA.weeks[ws] = {
+      u1Sent:     sentMsgs.length,
+      u1Threads:  threadIds.length,
+      u1Replied:  replied,
+      u1ReplyPct: threadIds.length ? Math.round(replied / threadIds.length * 100) : 0,
+      cc:         ccMsgs.length,
+      u2Inferred: friendMsgs.length,
+      syncedAt:   Date.now(),
+      live:       true,
+    };
+    saveDATA();
+    clearProgress();
+    setBadge('live', `Synced ${timeAgo(Date.now())}`);
+    toast('Synced');
+    render();
+  } catch(err) {
+    clearProgress();
+    setBadge('stale','Sync failed');
+    toast('Error: ' + err.message, true);
+    console.error(err);
+  } finally {
+    setSyncing(false);
+  }
+}
+
+function maybeAutoSync() {
+  const thisWeek = monday(todayStr());
+  const w = DATA.weeks[thisWeek];
+  if (!w || !w.syncedAt || (Date.now() - w.syncedAt > STALE)) {
+    selectedWeek = thisWeek;
+    setTimeout(() => triggerSync(), 400);
+  } else {
+    setBadge('live', `Synced ${timeAgo(w.syncedAt)}`);
+  }
+}
+
+function triggerSync() {
+  const ws = selectedWeek || monday(todayStr());
+  selectedWeek = ws;
+  if (!DATA.weeks[ws]) DATA.weeks[ws] = {};
+  syncWeek(ws);
+}
+
+function syncSelected() {
+  if (!selectedWeek) return;
+  syncWeek(selectedWeek);
+}
+
+// ── Render ─────────────────────────────────────────────────────────────────
+function dispDate(ds) {
+  return new Date(ds+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
+}
+
+function pctCol(p) {
+  return p >= 40 ? 'var(--green)' : p >= 20 ? 'var(--yellow)' : 'var(--red)';
+}
+
+function timeAgo(ts) {
+  if (!ts) return 'never';
+  const m = Math.floor((Date.now()-ts)/60000);
+  if (m < 1)   return 'just now';
+  if (m < 60)  return `${m}m ago`;
+  const h = Math.floor(m/60);
+  if (h < 24)  return `${h}h ago`;
+  return `${Math.floor(h/24)}d ago`;
+}
+
+function setBadge(state, label) {
+  document.getElementById('sdot').className = 'sdot ' + state;
+  document.getElementById('slbl').textContent = label;
+}
+
+function render() {
+  const weeks = Object.entries(DATA.weeks).sort((a,b) => a[0].localeCompare(b[0]));
+
+  // Labels
+  document.getElementById('dash-title').textContent = `${CFG.u1Name} & ${CFG.u2Name}`;
+  document.getElementById('th-u1s').textContent = CFG.u1Name;
+  document.getElementById('th-u2s').textContent = CFG.u2Name + ' (inferred)';
+  document.getElementById('mw-u1-lbl').textContent = CFG.u1Name;
+  document.getElementById('mw-u2-lbl').textContent = CFG.u2Name;
+
+  // All-time stats
+  const totSent    = weeks.reduce((s,[,w]) => s+(w.u1Sent    ||0), 0);
+  const totThreads = weeks.reduce((s,[,w]) => s+(w.u1Threads ||0), 0);
+  const totReplied = weeks.reduce((s,[,w]) => s+(w.u1Replied ||0), 0);
+  const totCC      = weeks.reduce((s,[,w]) => s+(w.cc        ||0), 0);
+  const totFriend  = weeks.reduce((s,[,w]) => s+(w.u2Inferred||0), 0);
+  const overallPct = totThreads ? Math.round(totReplied/totThreads*100) : 0;
+
+  document.getElementById('sgrid').innerHTML = [
+    { label:`${CFG.u1Name} Sent (all-time)`, val:totSent,        sub:`across ${weeks.length} week${weeks.length!==1?'s':''}`, cls:'u1' },
+    { label:`${CFG.u1Name} Reply Rate`,      val:`${overallPct}%`,sub:`${totReplied}/${totThreads} threads got replies`, cls:'u1' },
+    { label:'CC Overlap',                    val:totCC,           sub:'emails looped each other in', cls:'' },
+    { label:`${CFG.u2Name} (inferred)`,      val:totFriend,       sub:'emails to you (visible in your inbox)', cls:'u2' },
+  ].map(c => `<div class="scard"><div class="slabel">${c.label}</div><div class="sval ${c.cls}">${c.val}</div><div class="ssub">${c.sub}</div></div>`).join('');
+
+  // Week picker
+  if (!selectedWeek && weeks.length) selectedWeek = weeks[weeks.length-1][0];
+  const wsel = document.getElementById('wsel');
+  wsel.innerHTML = [...weeks].reverse().map(([d]) =>
+    `<option value="${d}"${d===selectedWeek?' selected':''}>${dispDate(d)}</option>`
+  ).join('') || '<option value="">No weeks yet</option>';
+
+  renderWeekDetail();
+  renderHistory(weeks);
+
+  // Badge
+  const tw = DATA.weeks[monday(todayStr())];
+  if (tw?.syncedAt) {
+    const stale = Date.now()-tw.syncedAt > STALE;
+    setBadge(stale?'stale':'live', stale ? 'Stale — click Refresh' : `Synced ${timeAgo(tw.syncedAt)}`);
+    document.getElementById('dash-meta').textContent = `Last synced ${timeAgo(tw.syncedAt)} · ${DATA.myEmail||''}`;
+  } else {
+    setBadge('stale','Not synced yet');
+    document.getElementById('dash-meta').textContent = DATA.myEmail || '';
+  }
+}
+
+function renderWeekDetail() {
+  const w = selectedWeek ? DATA.weeks[selectedWeek] : null;
+  document.getElementById('week-title').textContent = selectedWeek ? `Week of ${dispDate(selectedWeek)}` : 'No week selected';
+  document.getElementById('btn-del-week').classList.toggle('hidden', !selectedWeek);
+
+  if (!w || w.u1Sent == null) {
+    document.getElementById('week-rows').innerHTML = '<div style="color:var(--muted);font-size:13px;padding:8px 0">No data. Click "Sync this week" to pull from Gmail.</div>';
+    document.getElementById('wnote').textContent = '';
+    return;
+  }
+
+  const p1 = w.u1ReplyPct || 0, c1 = pctCol(p1);
+  document.getElementById('week-rows').innerHTML = `
+    <div class="ugrid" style="margin-bottom:8px">
+      <div class="lbl u1">${CFG.u1Name}</div>
+      <div class="num">${w.u1Sent}</div>
+      <div class="num">${w.cc}</div>
+      <div class="num">${w.u1Threads||'—'}</div>
+      <div class="barcell">
+        <div class="bar"><div class="barfill" style="width:${p1}%;background:${c1}"></div></div>
+        <div class="barpct" style="color:${c1}">${p1}%</div>
+      </div>
+    </div>
+    <hr class="wdiv"/>
+    <div class="ugrid" style="margin-top:8px">
+      <div class="lbl u2">${CFG.u2Name}<span class="tag">inferred</span></div>
+      <div class="num">${w.u2Inferred??'—'}</div>
+      <div class="num" style="color:var(--muted)">—</div>
+      <div class="num" style="color:var(--muted)">—</div>
+      <div style="font-size:12px;color:var(--muted)">emails to you</div>
+    </div>`;
+  document.getElementById('wnote').textContent = w.live
+    ? `Live data synced ${timeAgo(w.syncedAt)} · ${CFG.u2Name} count = emails they sent to you (partial view)`
+    : 'Manually entered';
+}
+
+function renderHistory(weeks) {
+  const tbody = document.getElementById('hist');
+  if (!weeks.length) {
+    tbody.innerHTML = '<tr><td colspan="6" style="color:var(--muted);padding:16px">No data yet.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = [...weeks].reverse().map(([date,w]) => {
+    const act = date===selectedWeek ? 'row-active' : '';
+    const p = w.u1ReplyPct||0, c = pctCol(p);
+    return `<tr class="clickable ${act}" onclick="selectWeek('${date}')">
+      <td>${dispDate(date)}</td>
+      <td class="u1" style="font-weight:600">${w.u1Sent??'—'}</td>
+      <td style="color:${c};font-weight:600">${w.u1Sent!=null ? p+'%' : '—'}</td>
+      <td class="u2" style="font-weight:600">${w.u2Inferred??'—'}</td>
+      <td style="font-weight:600">${w.cc??'—'}</td>
+      <td style="color:var(--muted);font-size:12px">${w.live ? timeAgo(w.syncedAt) : 'manual'}</td>
+    </tr>`;
+  }).join('');
+}
+
+// ── Actions ────────────────────────────────────────────────────────────────
+function selectWeek(d) {
+  selectedWeek = d;
+  document.getElementById('wsel').value = d;
+  renderWeekDetail();
+  document.querySelectorAll('#hist tr').forEach(tr =>
+    tr.classList.toggle('row-active', tr.getAttribute('onclick')?.includes(`'${d}'`))
+  );
+}
+
+function openAddWeek() {
+  document.getElementById('mw-date').value = monday(todayStr());
+  ['mw-u1s','mw-u1r','mw-cc','mw-u2s'].forEach(id => document.getElementById(id).value = 0);
+  document.getElementById('mw-u1-lbl').textContent = CFG.u1Name;
+  document.getElementById('mw-u2-lbl').textContent = CFG.u2Name;
+  openModal('m-add');
+}
+
+function saveManualWeek() {
+  const raw = document.getElementById('mw-date').value;
+  if (!raw) { toast('Pick a date', true); return; }
+  const ws  = monday(raw);
+  const s   = parseInt(document.getElementById('mw-u1s').value)||0;
+  const r   = parseInt(document.getElementById('mw-u1r').value)||0;
+  DATA.weeks[ws] = {
+    u1Sent:s, u1Threads:s, u1Replied:r,
+    u1ReplyPct: s ? Math.round(r/s*100) : 0,
+    cc: parseInt(document.getElementById('mw-cc').value)||0,
+    u2Inferred: parseInt(document.getElementById('mw-u2s').value)||0,
+    syncedAt: Date.now(), live: false,
+  };
+  saveDATA();
+  selectedWeek = ws;
+  closeModal('m-add');
+  render();
+  toast('Week added');
+}
+
+function deleteWeek() {
+  if (!selectedWeek || !confirm(`Delete week of ${dispDate(selectedWeek)}?`)) return;
+  delete DATA.weeks[selectedWeek];
+  saveDATA();
+  const ks = Object.keys(DATA.weeks).sort();
+  selectedWeek = ks.length ? ks[ks.length-1] : null;
+  render();
+}
+
+function openModal(id)  { document.getElementById(id).classList.remove('hidden'); }
+function closeModal(id) { document.getElementById(id).classList.add('hidden'); }
+document.querySelectorAll('.overlay').forEach(el =>
+  el.addEventListener('click', e => { if (e.target===el) el.classList.add('hidden'); })
+);
+
+function toast(msg, err=false) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.style.borderColor = err ? 'var(--red)' : 'var(--border)';
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 3000);
+}
+
+// ── Setup ──────────────────────────────────────────────────────────────────
+function populateSetup() {
+  document.getElementById('s-cid').value  = CFG.clientId    || '';
+  document.getElementById('s-u1').value   = CFG.u1Name      || 'Yasser';
+  document.getElementById('s-u2').value   = CFG.u2Name      || 'Friend';
+  document.getElementById('s-fe').value   = CFG.friendEmail || '';
+  document.getElementById('origin-hint').textContent = location.origin;
+}
+
+function saveSetup() {
+  const cid = document.getElementById('s-cid').value.trim();
+  const fe  = document.getElementById('s-fe').value.trim();
+  if (!cid) { toast('Enter your OAuth Client ID', true); return; }
+  if (!fe)  { toast("Enter your friend's email", true); return; }
+  CFG.clientId   = cid;
+  CFG.friendEmail = fe;
+  CFG.u1Name     = document.getElementById('s-u1').value.trim() || 'Yasser';
+  CFG.u2Name     = document.getElementById('s-u2').value.trim() || 'Friend';
+  saveCFG();
+  tokenClient = null; // reset so it reinits with new client ID
+  show('v-auth');
+  trysilent();
+}
+
+// ── Boot ───────────────────────────────────────────────────────────────────
+loadState();
+if (!isCfg()) {
+  show('v-setup');
+  populateSetup();
+} else {
+  show('v-auth');
+  initTokenClient();
+  trysilent(); // attempt silent re-auth; if it works → showDash(); else user clicks
+}
+</script>
+</body>
+</html>
