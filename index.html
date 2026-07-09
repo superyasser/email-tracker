@@ -168,7 +168,8 @@
 </div>
 
 <!-- ── Auth ── -->
-<div id="v-auth" class="hidden">
+<!-- v-auth is visible by default; JS hides it when navigating to another view -->
+<div id="v-auth">
   <div class="center-screen">
     <div class="auth-box">
       <div class="auth-icon">✉</div>
@@ -343,11 +344,14 @@ function goSetup() {
 // ── GIS Auth ───────────────────────────────────────────────────────────────
 function waitGIS(cb) {
   if (typeof google !== 'undefined' && google.accounts) return cb();
+  let fired = false;
   const t = setInterval(() => {
-    if (typeof google !== 'undefined' && google.accounts) { clearInterval(t); cb(); }
+    if (typeof google !== 'undefined' && google.accounts) {
+      clearInterval(t); if (!fired) { fired = true; cb(); }
+    }
   }, 100);
   // if GIS never loads (blocked, no internet), fail after 8s
-  setTimeout(() => { clearInterval(t); cb(); }, 8000);
+  setTimeout(() => { clearInterval(t); if (!fired) { fired = true; cb(); } }, 8000);
 }
 
 function buildTokenClient(clientId) {
@@ -933,7 +937,10 @@ async function boot() {
   // else: user sees the Sign in button and clicks it manually
 }
 
-boot();
+boot().catch(e => {
+  console.error('Boot crashed:', e);
+  // v-auth is visible by default, so user sees Sign in button even on crash
+});
 </script>
 </body>
 </html>
