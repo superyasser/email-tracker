@@ -168,7 +168,7 @@
       <div class="fg"><label>Google OAuth Client ID</label><input type="text" id="s-cid" placeholder="xxxxxxx.apps.googleusercontent.com" /></div>
       <div class="two-col">
         <div class="fg"><label>Your name</label><input type="text" id="s-u1" value="Yasser" /></div>
-        <div class="fg"><label>Friend's name</label><input type="text" id="s-u2" value="Friend" /></div>
+        <div class="fg"><label>Friend's name</label><input type="text" id="s-u2" value="AJ" /></div>
       </div>
       <div class="fg"><label>Friend's email (to infer their stats from your inbox)</label><input type="email" id="s-fe" placeholder="friend@example.com" /></div>
       <button class="btn" style="width:100%;justify-content:center;margin-top:6px" onclick="saveSetup()">Save and continue</button>
@@ -250,7 +250,7 @@
     <div class="tcard"><table>
       <thead><tr>
         <th>Week</th><th id="th-u1s">Sent</th><th>Reply %</th>
-        <th id="th-u2s">Friend</th><th>CC</th><th>Synced</th>
+        <th id="th-u2s">AJ Sent</th><th id="th-u2r">AJ Reply %</th><th>CC</th><th>Synced</th>
       </tr></thead>
       <tbody id="hist"></tbody>
     </table></div>
@@ -282,7 +282,7 @@
     <div class="tcard"><table>
       <thead><tr>
         <th>Week</th><th id="share-th-u1">Sent</th><th>Reply %</th>
-        <th id="share-th-u2">Friend</th><th>CC</th><th>Synced</th>
+        <th id="share-th-u2">AJ Sent</th><th id="share-th-u2r">AJ Reply %</th><th>CC</th><th>Synced</th>
       </tr></thead>
       <tbody id="share-hist"></tbody>
     </table></div>
@@ -321,7 +321,7 @@ const GAPI  = 'https://gmail.googleapis.com/gmail/v1/users/me';
 const STALE = 24 * 60 * 60 * 1000;
 
 // ── State ──────────────────────────────────────────────────────────────────
-let CFG  = { clientId:'', u1Name:'Yasser', u2Name:'Friend', friendEmail:'' };
+let CFG  = { clientId:'', u1Name:'Yasser', u2Name:'AJ', friendEmail:'' };
 let DATA = { weeks:{}, myEmail:'' };
 let token = null, tokenExp = 0;
 let tokenClient = null;
@@ -467,7 +467,10 @@ async function getMyEmail() {
   return DATA.myEmail;
 }
 
-async function calcReplyRate(threadIds, myEmail, onProg) {
+// excludeEmails: array of email addresses — a thread counts as "replied" if
+// it has a message from someone NOT in that list
+async function calcReplyRate(threadIds, excludeEmails, onProg) {
+  const excl = excludeEmails.map(e => e.toLowerCase());
   const BATCH = 6; let replied = 0;
   for (let i = 0; i < threadIds.length; i += BATCH) {
     const batch = await Promise.all(
@@ -478,7 +481,7 @@ async function calcReplyRate(threadIds, myEmail, onProg) {
     for (const t of batch.filter(Boolean)) {
       const hasOther = (t.messages||[]).some(m => {
         const from = (m.payload?.headers?.find(h=>h.name==='From')?.value||'').toLowerCase();
-        return !from.includes(myEmail.toLowerCase());
+        return !excl.some(e => from.includes(e));
       });
       if (hasOther) replied++;
     }
@@ -536,18 +539,26 @@ async function syncWeek(ws) {
     setProgress(`Counting ${CFG.u2Name}'s emails to you...`, 35);
     const friendMsgs = await listAll(`from:${CFG.friendEmail} after:${after} before:${before}`);
 
-    const threadIds = [...new Set(sentMsgs.map(m=>m.threadId))];
-    setProgress(`Analyzing ${threadIds.length} threads...`, 42);
+    const threadIds   = [...new Set(sentMsgs.map(m=>m.threadId))];
+    const u2ThreadIds = [...new Set(friendMsgs.map(m=>m.threadId))];
 
-    const replied = await calcReplyRate(threadIds, myEmail, (done,tot) => {
-      setProgress(`Threads ${done}/${tot}...`, 42+Math.round(done/tot*52));
+    setProgress(`Analyzing your ${threadIds.length} sent threads...`, 42);
+    const replied = await calcReplyRate(threadIds, [myEmail], (done,tot) => {
+      setProgress(`Your threads ${done}/${tot}...`, 42+Math.round(done/tot*26));
+    });
+
+    setProgress(`Analyzing ${CFG.u2Name}'s ${u2ThreadIds.length} threads...`, 68);
+    const u2Replied = await calcReplyRate(u2ThreadIds, [myEmail, CFG.friendEmail], (done,tot) => {
+      setProgress(`${CFG.u2Name}'s threads ${done}/${tot}...`, 68+Math.round(done/tot*26));
     });
 
     DATA.weeks[ws] = {
       u1Sent:sentMsgs.length, u1Threads:threadIds.length,
       u1Replied:replied,
       u1ReplyPct: threadIds.length ? Math.round(replied/threadIds.length*100) : 0,
-      cc:ccMsgs.length, u2Inferred:friendMsgs.length,
+      cc:ccMsgs.length,
+      u2Sent:friendMsgs.length, u2Threads:u2ThreadIds.length,
+      u2Replied, u2ReplyPct: u2ThreadIds.length ? Math.round(u2Replied/u2ThreadIds.length*100) : 0,
       syncedAt:Date.now(), live:true,
     };
     saveDATA();
@@ -626,24 +637,27 @@ function renderShareView(data) {
   const at = data.at ? new Date(data.at).toLocaleString() : '—';
   document.getElementById('share-title').textContent = `${data.u1} & ${data.u2} — Email Tracker`;
   document.getElementById('share-sub').textContent   = `Read-only snapshot from ${at}`;
-  document.getElementById('share-th-u1').textContent = data.u1;
-  document.getElementById('share-th-u2').textContent = data.u2 + ' (inferred)';
+  document.getElementById('share-th-u1').textContent  = data.u1;
+  document.getElementById('share-th-u2').textContent  = data.u2 + ' Sent';
+  document.getElementById('share-th-u2r').textContent = data.u2 + ' Reply %';
 
   const weeks = Object.entries(data.weeks||{}).sort((a,b)=>a[0].localeCompare(b[0]));
 
   // Stats
-  const totSent    = weeks.reduce((s,[,w])=>s+(w.u1Sent   ||0),0);
-  const totThreads = weeks.reduce((s,[,w])=>s+(w.u1Threads||0),0);
-  const totReplied = weeks.reduce((s,[,w])=>s+(w.u1Replied||0),0);
-  const totCC      = weeks.reduce((s,[,w])=>s+(w.cc       ||0),0);
-  const totFriend  = weeks.reduce((s,[,w])=>s+(w.u2Inferred||0),0);
-  const overallPct = totThreads ? Math.round(totReplied/totThreads*100) : 0;
+  const totSent      = weeks.reduce((s,[,w])=>s+(w.u1Sent    ||0),0);
+  const totThreads   = weeks.reduce((s,[,w])=>s+(w.u1Threads ||0),0);
+  const totReplied   = weeks.reduce((s,[,w])=>s+(w.u1Replied ||0),0);
+  const totCC        = weeks.reduce((s,[,w])=>s+(w.cc        ||0),0);
+  const totU2Threads = weeks.reduce((s,[,w])=>s+(w.u2Threads ||0),0);
+  const totU2Replied = weeks.reduce((s,[,w])=>s+(w.u2Replied ||0),0);
+  const overallPct   = totThreads   ? Math.round(totReplied  /totThreads  *100) : 0;
+  const u2Pct        = totU2Threads ? Math.round(totU2Replied/totU2Threads*100) : 0;
 
   document.getElementById('share-sgrid').innerHTML = [
     { label:`${data.u1} Sent`,    val:totSent,        sub:`${weeks.length} weeks`, cls:'u1' },
     { label:`${data.u1} Reply %`, val:`${overallPct}%`,sub:`${totReplied}/${totThreads} threads`, cls:'u1' },
-    { label:'CC Overlap',         val:totCC,           sub:'looped each other in', cls:'' },
-    { label:`${data.u2} (inferred)`,val:totFriend,    sub:'emails to you', cls:'u2' },
+    { label:`${data.u2} Reply %`, val:`${u2Pct}%`,    sub:`${totU2Replied}/${totU2Threads} threads (via CC)`, cls:'u2' },
+    { label:'CC Overlap',         val:totCC,           sub:'emails looped each other in', cls:'' },
   ].map(c=>`<div class="scard"><div class="slabel">${c.label}</div><div class="sval ${c.cls}">${c.val}</div><div class="ssub">${c.sub}</div></div>`).join('');
 
   // Week picker
@@ -673,6 +687,7 @@ function renderShareWeek(data) {
     return;
   }
   const p1=w.u1ReplyPct||0, c1=pctCol(p1);
+  const p2=w.u2ReplyPct||0, c2=pctCol(p2);
   document.getElementById('share-week-rows').innerHTML = `
     <div class="ugrid" style="margin-bottom:8px">
       <div class="lbl u1">${data.u1}</div>
@@ -682,10 +697,11 @@ function renderShareWeek(data) {
     </div>
     <hr class="wdiv"/>
     <div class="ugrid" style="margin-top:8px">
-      <div class="lbl u2">${data.u2}<span class="itag">inferred</span></div>
-      <div class="num">${w.u2Inferred??'—'}</div>
-      <div class="num" style="color:var(--muted)">—</div><div class="num" style="color:var(--muted)">—</div>
-      <div style="font-size:12px;color:var(--muted)">emails to you</div>
+      <div class="lbl u2">${data.u2}<span class="itag">via CC</span></div>
+      <div class="num">${w.u2Sent??w.u2Inferred??'—'}</div>
+      <div class="num" style="color:var(--muted)">—</div>
+      <div class="num">${w.u2Threads||'—'}</div>
+      <div class="barcell"><div class="bar"><div class="barfill" style="width:${p2}%;background:${c2}"></div></div><div class="barpct" style="color:${c2}">${w.u2Threads?p2+'%':'—'}</div></div>
     </div>`;
 }
 
@@ -693,12 +709,13 @@ function renderShareHist(weeks, data) {
   const tbody = document.getElementById('share-hist');
   if (!weeks.length) { tbody.innerHTML='<tr><td colspan="6" style="color:var(--muted);padding:16px">No data.</td></tr>'; return; }
   tbody.innerHTML = [...weeks].reverse().map(([date,w])=>{
-    const p=w.u1ReplyPct||0, c=pctCol(p);
+    const p1=w.u1ReplyPct||0, c1=pctCol(p1), p2=w.u2ReplyPct||0, c2=pctCol(p2);
     return `<tr class="clickable${date===shareSelected?' row-active':''}" onclick="shareSelectWeek('${date}')">
       <td>${dispDate(date)}</td>
       <td class="u1" style="font-weight:600">${w.u1Sent??'—'}</td>
-      <td style="color:${c};font-weight:600">${w.u1Sent!=null?p+'%':'—'}</td>
-      <td class="u2" style="font-weight:600">${w.u2Inferred??'—'}</td>
+      <td style="color:${c1};font-weight:600">${w.u1Sent!=null?p1+'%':'—'}</td>
+      <td class="u2" style="font-weight:600">${w.u2Sent??w.u2Inferred??'—'}</td>
+      <td style="color:${c2};font-weight:600">${w.u2Threads?p2+'%':'—'}</td>
       <td style="font-weight:600">${w.cc??'—'}</td>
       <td style="color:var(--muted);font-size:12px">${timeAgo(w.syncedAt)}</td>
     </tr>`;
@@ -728,20 +745,23 @@ function render() {
 
   document.getElementById('dash-title').textContent = `${CFG.u1Name} & ${CFG.u2Name}`;
   document.getElementById('th-u1s').textContent = CFG.u1Name;
-  document.getElementById('th-u2s').textContent = CFG.u2Name+' (inferred)';
+  document.getElementById('th-u2s').textContent = CFG.u2Name + ' Sent';
+  document.getElementById('th-u2r').textContent = CFG.u2Name + ' Reply %';
 
-  const totSent    = weeks.reduce((s,[,w])=>s+(w.u1Sent   ||0),0);
-  const totThreads = weeks.reduce((s,[,w])=>s+(w.u1Threads||0),0);
-  const totReplied = weeks.reduce((s,[,w])=>s+(w.u1Replied||0),0);
-  const totCC      = weeks.reduce((s,[,w])=>s+(w.cc       ||0),0);
-  const totFriend  = weeks.reduce((s,[,w])=>s+(w.u2Inferred||0),0);
-  const overallPct = totThreads ? Math.round(totReplied/totThreads*100) : 0;
+  const totSent      = weeks.reduce((s,[,w])=>s+(w.u1Sent    ||0),0);
+  const totThreads   = weeks.reduce((s,[,w])=>s+(w.u1Threads ||0),0);
+  const totReplied   = weeks.reduce((s,[,w])=>s+(w.u1Replied ||0),0);
+  const totCC        = weeks.reduce((s,[,w])=>s+(w.cc        ||0),0);
+  const totU2Threads = weeks.reduce((s,[,w])=>s+(w.u2Threads ||0),0);
+  const totU2Replied = weeks.reduce((s,[,w])=>s+(w.u2Replied ||0),0);
+  const overallPct   = totThreads   ? Math.round(totReplied  /totThreads  *100) : 0;
+  const u2Pct        = totU2Threads ? Math.round(totU2Replied/totU2Threads*100) : 0;
 
   document.getElementById('sgrid').innerHTML = [
     { label:`${CFG.u1Name} Sent (all-time)`, val:totSent,        sub:`${weeks.length} week${weeks.length!==1?'s':''}`, cls:'u1' },
-    { label:`${CFG.u1Name} Reply Rate`,      val:`${overallPct}%`,sub:`${totReplied}/${totThreads} threads got replies`, cls:'u1' },
+    { label:`${CFG.u1Name} Reply Rate`,      val:`${overallPct}%`,sub:`${totReplied}/${totThreads} threads`, cls:'u1' },
+    { label:`${CFG.u2Name} Reply Rate`,      val:`${u2Pct}%`,    sub:`${totU2Replied}/${totU2Threads} threads (via CC)`, cls:'u2' },
     { label:'CC Overlap',                    val:totCC,           sub:'emails looped each other in', cls:'' },
-    { label:`${CFG.u2Name} (inferred)`,      val:totFriend,       sub:'emails they sent to you', cls:'u2' },
   ].map(c=>`<div class="scard"><div class="slabel">${c.label}</div><div class="sval ${c.cls}">${c.val}</div><div class="ssub">${c.sub}</div></div>`).join('');
 
   if (!selectedWeek && weeks.length) selectedWeek = weeks[weeks.length-1][0];
@@ -773,6 +793,7 @@ function renderWeekDetail() {
     return;
   }
   const p1=w.u1ReplyPct||0, c1=pctCol(p1);
+  const p2=w.u2ReplyPct||0, c2=pctCol(p2);
   document.getElementById('week-rows').innerHTML = `
     <div class="ugrid" style="margin-bottom:8px">
       <div class="lbl u1">${CFG.u1Name}</div>
@@ -782,26 +803,29 @@ function renderWeekDetail() {
     </div>
     <hr class="wdiv"/>
     <div class="ugrid" style="margin-top:8px">
-      <div class="lbl u2">${CFG.u2Name}<span class="itag">inferred</span></div>
-      <div class="num">${w.u2Inferred??'—'}</div>
-      <div class="num" style="color:var(--muted)">—</div><div class="num" style="color:var(--muted)">—</div>
-      <div style="font-size:12px;color:var(--muted)">emails to you</div>
+      <div class="lbl u2">${CFG.u2Name}<span class="itag">via CC</span></div>
+      <div class="num">${w.u2Sent??w.u2Inferred??'—'}</div>
+      <div class="num" style="color:var(--muted)">—</div>
+      <div class="num">${w.u2Threads||'—'}</div>
+      <div class="barcell"><div class="bar"><div class="barfill" style="width:${p2}%;background:${c2}"></div></div><div class="barpct" style="color:${c2}">${w.u2Threads?p2+'%':'—'}</div></div>
     </div>`;
   document.getElementById('wnote').textContent = w.live
-    ? `Live from Gmail · synced ${timeAgo(w.syncedAt)} · ${CFG.u2Name} count = emails they sent to you only`
+    ? `Live from Gmail · synced ${timeAgo(w.syncedAt)} · ${CFG.u2Name}'s reply rate inferred from CC'd threads in your inbox`
     : 'Manually entered';
 }
 
 function renderHistory(weeks) {
   const tbody = document.getElementById('hist');
-  if (!weeks.length) { tbody.innerHTML='<tr><td colspan="6" style="color:var(--muted);padding:16px">No data yet.</td></tr>'; return; }
+  if (!weeks.length) { tbody.innerHTML='<tr><td colspan="7" style="color:var(--muted);padding:16px">No data yet.</td></tr>'; return; }
   tbody.innerHTML = [...weeks].reverse().map(([date,w])=>{
-    const act=date===selectedWeek?'row-active':'', p=w.u1ReplyPct||0, c=pctCol(p);
+    const act=date===selectedWeek?'row-active':'';
+    const p1=w.u1ReplyPct||0, c1=pctCol(p1), p2=w.u2ReplyPct||0, c2=pctCol(p2);
     return `<tr class="clickable ${act}" onclick="selectWeek('${date}')">
       <td>${dispDate(date)}</td>
       <td class="u1" style="font-weight:600">${w.u1Sent??'—'}</td>
-      <td style="color:${c};font-weight:600">${w.u1Sent!=null?p+'%':'—'}</td>
-      <td class="u2" style="font-weight:600">${w.u2Inferred??'—'}</td>
+      <td style="color:${c1};font-weight:600">${w.u1Sent!=null?p1+'%':'—'}</td>
+      <td class="u2" style="font-weight:600">${w.u2Sent??w.u2Inferred??'—'}</td>
+      <td style="color:${c2};font-weight:600">${w.u2Threads?p2+'%':'—'}</td>
       <td style="font-weight:600">${w.cc??'—'}</td>
       <td style="color:var(--muted);font-size:12px">${w.live?timeAgo(w.syncedAt):'manual'}</td>
     </tr>`;
@@ -865,7 +889,7 @@ function toast(msg, err=false) {
 function populateSetup() {
   document.getElementById('s-cid').value  = CFG.clientId    || '';
   document.getElementById('s-u1').value   = CFG.u1Name      || 'Yasser';
-  document.getElementById('s-u2').value   = CFG.u2Name      || 'Friend';
+  document.getElementById('s-u2').value   = CFG.u2Name      || 'AJ';
   document.getElementById('s-fe').value   = CFG.friendEmail || '';
   document.getElementById('origin-hint').textContent = location.origin;
 }
@@ -877,7 +901,7 @@ function saveSetup() {
   if (!fe)  { toast("Enter your friend's email",true); return; }
   CFG.clientId=cid; CFG.friendEmail=fe;
   CFG.u1Name=document.getElementById('s-u1').value.trim()||'Yasser';
-  CFG.u2Name=document.getElementById('s-u2').value.trim()||'Friend';
+  CFG.u2Name=document.getElementById('s-u2').value.trim()||'AJ';
   saveCFG();
   boot(); // re-run boot with new config
 }
