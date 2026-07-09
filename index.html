@@ -48,11 +48,6 @@
     .two-col{display:grid;grid-template-columns:1fr 1fr;gap:12px}
     .fsep{font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin:16px 0 10px;border-top:1px solid var(--border);padding-top:14px}
 
-    /* Loading screen */
-    #v-loading{display:flex;align-items:center;justify-content:center;min-height:100vh;flex-direction:column;gap:16px}
-    .spinner{width:32px;height:32px;border:3px solid var(--surface2);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite}
-    @keyframes spin{to{transform:rotate(360deg)}}
-
     /* Auth */
     .auth-box{text-align:center;max-width:380px;padding:16px}
     .auth-icon{width:52px;height:52px;background:var(--accent);border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:24px;margin:0 auto 18px}
@@ -147,11 +142,7 @@
 </head>
 <body>
 
-<!-- ── Loading ── -->
-<div id="v-loading">
-  <div class="spinner"></div>
-  <div style="color:var(--muted);font-size:13px">Connecting to Gmail...</div>
-</div>
+<!-- v-loading removed; auth screen is shown immediately instead -->
 
 <!-- ── Setup ── -->
 <div id="v-setup" class="hidden">
@@ -338,7 +329,7 @@ function saveDATA() { localStorage.setItem('et3-data', JSON.stringify(DATA)); }
 const isCfg = () => !!(CFG.clientId && CFG.friendEmail);
 
 // ── Views ──────────────────────────────────────────────────────────────────
-const VIEWS = ['v-loading','v-setup','v-auth','v-dash','v-share'];
+const VIEWS = ['v-setup','v-auth','v-dash','v-share'];
 function show(id) {
   VIEWS.forEach(v => document.getElementById(v).classList.add('hidden'));
   document.getElementById(id).classList.remove('hidden');
@@ -914,7 +905,6 @@ function saveSetup() {
 async function boot() {
   loadState();
 
-  // Check for share link first (no auth needed)
   if (location.hash.startsWith('#share=')) {
     if (loadShareView()) return;
   }
@@ -925,32 +915,22 @@ async function boot() {
     return;
   }
 
-  // Show loading while we attempt silent auth
-  show('v-loading');
+  // Show auth screen immediately — never get stuck
+  document.getElementById('auth-error').classList.add('hidden');
+  show('v-auth');
 
+  // Attempt silent re-auth in the background (works if user already consented)
   tokenClient = await buildTokenClient(CFG.clientId);
-  if (!tokenClient) {
-    showAuthError('Google Identity Services failed to load. Check your internet connection or ad blocker.');
-    return;
-  }
+  if (!tokenClient) return; // GIS failed to load — user can still click Sign in manually
 
-  // Try silent auth (no popup) — works automatically if user has active Google session
   const ok = await new Promise(resolve => {
-    pending = {
-      resolve: () => resolve(true),
-      reject:  () => resolve(false),
-    };
-    tokenClient.requestAccessToken({ prompt: '' });
-    setTimeout(() => { if (pending) { pending = null; resolve(false); } }, 5000);
+    pending = { resolve: () => resolve(true), reject: () => resolve(false) };
+    try { tokenClient.requestAccessToken({ prompt: '' }); } catch { resolve(false); }
+    setTimeout(() => { if (pending) { pending = null; resolve(false); } }, 4000);
   });
 
-  if (ok) {
-    showDash();
-  } else {
-    // Silent auth failed — show the sign-in button
-    document.getElementById('auth-error').classList.add('hidden');
-    show('v-auth');
-  }
+  if (ok) showDash();
+  // else: user sees the Sign in button and clicks it manually
 }
 
 boot();
