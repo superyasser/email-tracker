@@ -644,20 +644,22 @@ function renderShareView(data) {
   const weeks = Object.entries(data.weeks||{}).sort((a,b)=>a[0].localeCompare(b[0]));
 
   // Stats
-  const totSent      = weeks.reduce((s,[,w])=>s+(w.u1Sent    ||0),0);
+  const totU1Sent    = weeks.reduce((s,[,w])=>s+(w.u1Sent    ||0),0);
+  const totU2Sent    = weeks.reduce((s,[,w])=>s+(w.u2Sent??w.u2Inferred||0),0);
+  const totSent      = totU1Sent + totU2Sent;
   const totThreads   = weeks.reduce((s,[,w])=>s+(w.u1Threads ||0),0);
   const totReplied   = weeks.reduce((s,[,w])=>s+(w.u1Replied ||0),0);
   const totCC        = weeks.reduce((s,[,w])=>s+(w.cc        ||0),0);
   const totU2Threads = weeks.reduce((s,[,w])=>s+(w.u2Threads ||0),0);
   const totU2Replied = weeks.reduce((s,[,w])=>s+(w.u2Replied ||0),0);
-  const overallPct   = totThreads   ? Math.round(totReplied  /totThreads  *100) : 0;
+  const u1Pct        = totThreads   ? Math.round(totReplied  /totThreads  *100) : 0;
   const u2Pct        = totU2Threads ? Math.round(totU2Replied/totU2Threads*100) : 0;
 
   document.getElementById('share-sgrid').innerHTML = [
-    { label:`${data.u1} Sent`,    val:totSent,        sub:`${weeks.length} weeks`, cls:'u1' },
-    { label:`${data.u1} Reply %`, val:`${overallPct}%`,sub:`${totReplied}/${totThreads} threads`, cls:'u1' },
-    { label:`${data.u2} Reply %`, val:`${u2Pct}%`,    sub:`${totU2Replied}/${totU2Threads} threads (via CC)`, cls:'u2' },
-    { label:'CC Overlap',         val:totCC,           sub:'emails looped each other in', cls:'' },
+    { label:'Total Sent',              val:totSent,   sub:`${data.u1}: ${totU1Sent} · ${data.u2}: ${totU2Sent}`, cls:'' },
+    { label:`${data.u1} Reply Rate`,   val:`${u1Pct}%`,sub:`${totReplied}/${totThreads} threads`, cls:'u1' },
+    { label:`${data.u2} Reply Rate`,   val:`${u2Pct}%`,sub:`${totU2Replied}/${totU2Threads} threads (via CC)`, cls:'u2' },
+    { label:'CC Overlap',              val:totCC,     sub:`across ${weeks.length} weeks`, cls:'' },
   ].map(c=>`<div class="scard"><div class="slabel">${c.label}</div><div class="sval ${c.cls}">${c.val}</div><div class="ssub">${c.sub}</div></div>`).join('');
 
   // Week picker
@@ -748,20 +750,22 @@ function render() {
   document.getElementById('th-u2s').textContent = CFG.u2Name + ' Sent';
   document.getElementById('th-u2r').textContent = CFG.u2Name + ' Reply %';
 
-  const totSent      = weeks.reduce((s,[,w])=>s+(w.u1Sent    ||0),0);
+  const totU1Sent    = weeks.reduce((s,[,w])=>s+(w.u1Sent    ||0),0);
+  const totU2Sent    = weeks.reduce((s,[,w])=>s+(w.u2Sent??w.u2Inferred||0),0);
+  const totSent      = totU1Sent + totU2Sent;
   const totThreads   = weeks.reduce((s,[,w])=>s+(w.u1Threads ||0),0);
   const totReplied   = weeks.reduce((s,[,w])=>s+(w.u1Replied ||0),0);
   const totCC        = weeks.reduce((s,[,w])=>s+(w.cc        ||0),0);
   const totU2Threads = weeks.reduce((s,[,w])=>s+(w.u2Threads ||0),0);
   const totU2Replied = weeks.reduce((s,[,w])=>s+(w.u2Replied ||0),0);
-  const overallPct   = totThreads   ? Math.round(totReplied  /totThreads  *100) : 0;
+  const u1Pct        = totThreads   ? Math.round(totReplied  /totThreads  *100) : 0;
   const u2Pct        = totU2Threads ? Math.round(totU2Replied/totU2Threads*100) : 0;
 
   document.getElementById('sgrid').innerHTML = [
-    { label:`${CFG.u1Name} Sent (all-time)`, val:totSent,        sub:`${weeks.length} week${weeks.length!==1?'s':''}`, cls:'u1' },
-    { label:`${CFG.u1Name} Reply Rate`,      val:`${overallPct}%`,sub:`${totReplied}/${totThreads} threads`, cls:'u1' },
-    { label:`${CFG.u2Name} Reply Rate`,      val:`${u2Pct}%`,    sub:`${totU2Replied}/${totU2Threads} threads (via CC)`, cls:'u2' },
-    { label:'CC Overlap',                    val:totCC,           sub:'emails looped each other in', cls:'' },
+    { label:'Total Sent',              val:totSent,   sub:`${CFG.u1Name}: ${totU1Sent} · ${CFG.u2Name}: ${totU2Sent}`, cls:'' },
+    { label:`${CFG.u1Name} Reply Rate`,val:`${u1Pct}%`,sub:`${totReplied}/${totThreads} threads`, cls:'u1' },
+    { label:`${CFG.u2Name} Reply Rate`,val:`${u2Pct}%`,sub:`${totU2Replied}/${totU2Threads} threads (via CC)`, cls:'u2' },
+    { label:'CC Overlap',              val:totCC,     sub:`across ${weeks.length} week${weeks.length!==1?'s':''}`, cls:'' },
   ].map(c=>`<div class="scard"><div class="slabel">${c.label}</div><div class="sval ${c.cls}">${c.val}</div><div class="ssub">${c.sub}</div></div>`).join('');
 
   if (!selectedWeek && weeks.length) selectedWeek = weeks[weeks.length-1][0];
