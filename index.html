@@ -176,6 +176,7 @@
       <h2>Email Tracker</h2>
       <p>Sign in once to pull your Gmail stats</p>
       <div id="auth-error" class="err-box hidden"></div>
+      <div id="auth-status" style="font-size:12px;color:#888;margin-bottom:8px">Checking Google Sign-In...</div>
       <button class="goog-btn" onclick="requestToken()">
         <svg viewBox="0 0 24 24"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
         Sign in with Google
@@ -354,10 +355,23 @@ function waitGIS(cb) {
   setTimeout(() => { clearInterval(t); if (!fired) { fired = true; cb(); } }, 8000);
 }
 
+function setAuthStatus(msg) {
+  const el = document.getElementById('auth-status');
+  if (el) el.textContent = msg;
+}
+
 function buildTokenClient(clientId) {
   return new Promise((res) => {
+    setAuthStatus('Loading Google Sign-In library...');
     waitGIS(() => {
-      if (typeof google === 'undefined') { res(null); return; }
+      if (typeof google === 'undefined') {
+        setAuthStatus('ERROR: Google Sign-In script failed to load. Check your internet connection.');
+        res(null); return;
+      }
+      if (!clientId) {
+        setAuthStatus('ERROR: No OAuth Client ID configured. Click "Change settings".');
+        res(null); return;
+      }
       try {
         const tc = google.accounts.oauth2.initTokenClient({
           client_id: clientId,
@@ -365,12 +379,17 @@ function buildTokenClient(clientId) {
           callback: handleToken,
           error_callback: (e) => {
             const msg = e.type || 'gis_error';
+            setAuthStatus('GIS error: ' + msg);
             if (pending) { pending.reject(new Error(msg)); pending = null; }
             else { showAuthError(msg); }
           }
         });
+        setAuthStatus('Ready. Click the button above to sign in.');
         res(tc);
-      } catch(e) { res(null); }
+      } catch(e) {
+        setAuthStatus('ERROR: ' + (e.message || e));
+        res(null);
+      }
     });
   });
 }
@@ -404,13 +423,17 @@ async function ensureToken() {
 function requestToken() {
   // Must be synchronous — any await before requestAccessToken loses the
   // browser's user-gesture context and silently blocks the OAuth popup.
+  setAuthStatus('Button clicked...');
   if (!tokenClient) {
-    showAuthError('Page is still initializing. Wait a moment then try again, or reload if this persists.');
+    setAuthStatus('ERROR: tokenClient is null — GIS not ready yet.');
+    showAuthError('Page is still initializing. Wait a moment and try again, or reload.');
     return;
   }
+  setAuthStatus('Opening Google sign-in popup...');
   try {
     tokenClient.requestAccessToken({ prompt: 'select_account' });
   } catch(e) {
+    setAuthStatus('ERROR calling requestAccessToken: ' + (e.message || e));
     showAuthError('Could not open Google sign-in: ' + (e.message || e));
   }
 }
