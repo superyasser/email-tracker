@@ -364,7 +364,9 @@ function buildTokenClient(clientId) {
           scope: SCOPE,
           callback: handleToken,
           error_callback: (e) => {
-            if (pending) { pending.reject(new Error(e.type || 'gis_error')); pending = null; }
+            const msg = e.type || 'gis_error';
+            if (pending) { pending.reject(new Error(msg)); pending = null; }
+            else { showAuthError(msg); }
           }
         });
         res(tc);
@@ -399,16 +401,18 @@ async function ensureToken() {
   });
 }
 
-async function requestToken() {
+function requestToken() {
+  // Must be synchronous — any await before requestAccessToken loses the
+  // browser's user-gesture context and silently blocks the OAuth popup.
   if (!tokenClient) {
-    // GIS may not have loaded yet during boot — try building now
-    tokenClient = await buildTokenClient(CFG.clientId);
-  }
-  if (!tokenClient) {
-    showAuthError('Google Sign-In script failed to load. Check your internet connection and reload.');
+    showAuthError('Page is still initializing. Wait a moment then try again, or reload if this persists.');
     return;
   }
-  tokenClient.requestAccessToken({ prompt: 'select_account' });
+  try {
+    tokenClient.requestAccessToken({ prompt: 'select_account' });
+  } catch(e) {
+    showAuthError('Could not open Google sign-in: ' + (e.message || e));
+  }
 }
 
 function signOut() {
